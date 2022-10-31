@@ -1,0 +1,763 @@
+#!/bin/bash
+
+export POSIXLY_CORRECT=yes
+
+
+print_help_message(){
+	echo "*********************************************************"
+	echo "NAME"
+	echo "corona"
+	echo ""
+	echo "SYNOPSIS:"
+	echo "corona [-h] [FILTERS] [COMMAND] [LOG [LOG2 [...]]"
+	echo ""
+	echo "DESCRIPTION:"
+	echo "FILTERS:"
+	echo "-a=AFTER_DATE"
+	echo "		print results after date YYYY-MM-DD" 
+    echo "-b=BEFORE_DATE"
+    echo "          print results BEFORE date YYYY-MM-DD"
+	echo "-g=GENDER"
+	echo "		print only chosen gender use Z for female or M for male"
+	echo "-h"
+	echo "		print help"
+	echo "-s=[WIDTH]"
+	echo "For commands gender, age, daily, monthly, yearly, countries, districts and regions. Output will ber printed graphically"
+	echo "WIDTH represents the number of # printied" 
+	echo "If WIDTH is not specified, # represents these values of infected: "
+	echo "GENDER: 100 000"
+	echo "AGE: 10 000"
+	echo "DAILY: 500"
+	echo "MONTHLY: 10 000"
+	echo "YEARLY: 100 000"
+	echo "COUNTRIES: 100"
+	echo "DISTRICTS: 1 000"
+	echo "REGIONS: 10 000"
+	echo ""
+	echo "COMMANDS:"
+	echo "GENDER"
+	echo "		print number of infected people by their gender or None is not specified" 
+	echo "AGE"
+	echo "		print number of infected people by their age or None is not specified"
+	echo "DAILY"
+	echo "		print number of infected people daily or None is not specified"
+	echo "MONTHLY"
+	echo "		print number of infected people monthly or None is not specified"
+	echo "YEARLY"
+	echo "		print number of infected people yearly or None is not specified"
+	echo "COUNTRIE:"
+	echo "		print number of infected people by country"
+	echo "DISTRICTS"
+	echo "		print number of infected people by districts or None is not specified"
+	echo "REGIONS"
+	echo "		print number of infected people by regions or None is not specified"
+	echo ""
+	echo "*********************************************************"
+}
+
+
+
+AFTER_DATE="0000-00-00"
+BEFORE_DATE="9999-99-99"
+IS_SET_DATE=0
+GENDER="(.*?)"
+COMMAND=""
+IS_COMMAND=0
+IS_SET_S=0
+S_VALUE=0
+
+
+while [ $# -gt 0 ]
+	do
+
+	if [[ $1 =~ (yearly|infected|merge|gender|age|daily|monthly|countries|districts|regions) && $IS_COMMAND == 0 ]]
+		then
+		COMMAND=$1
+		IS_COMMAND=1
+		shift
+		break
+	fi
+
+	case $1 in
+		"-a")
+		AFTER_DATE=$2
+		IS_SET_DATE=1
+		shift
+		shift
+		;;
+		"-b")
+		BEFORE_DATE=$2
+		IS_SET_DATE=1
+		shift
+		shift
+
+		;;
+		"-g")
+		GENDER="^["$2"]$"
+		shift
+		shift
+		;;
+		"-h")
+		print_help_message; exit;;
+		"-s")
+		if [[ $IS_COMMAND == 0 ]]
+			then
+				IS_SET_S=1
+				if [[ $2 =~ ^[0-9]+$ ]]
+					then
+						S_VALUE=$2
+						shift
+				fi
+			shift
+		fi
+		;;
+		*)
+		break
+		;;
+	esac
+
+done
+FILES=($@)
+FILES_LEN=${#FILES[@]}
+i=0
+INPUT=""
+INPUT=cat
+while [ $i -lt $FILES_LEN ]
+	do
+	TEST_FILE=${FILES[$i]}
+	if [[ $TEST_FILE =~ ^.+\.(csv)$ ]]
+	then
+	INPUT+=`eval cat $TEST_FILE`
+	fi
+
+	if [[ $TEST_FILE =~ ^.+\.(bz2)$ ]]
+	then
+	INPUT+=`eval bzcat $TEST_FILE`
+	fi
+
+	if [[ $TEST_FILE =~ ^.+\.(gz)$ ]]
+	then
+	INPUT+=`eval zcat $TEST_FILE`
+	fi
+
+	let i++
+	done
+
+	S_GENDER=100000
+	S_AGE=10000
+	S_DAILY=500
+	S_MONTHLY=10000
+	S_YEARLY=100000
+	S_COUNTRIES=100
+	S_DISTRICTS=1000
+	S_REGIONS=10000
+
+
+
+
+if [ $IS_SET_DATE -eq 0 ] 
+	then
+	SET_DATE="!\$2"
+	else
+	SET_DATE=""
+	fi
+
+WRITE_HEAD="cat $FILES | head -1"
+WRITE_WITH_GENDER="cat $FILES | awk -F ',' '($SET_DATE\$2 > \"$AFTER_DATE\" && \$2 < \"$BEFORE_DATE\") && \$4 ~ /$GENDER/ {print \$0}'"
+WRITE_NONE_GENDER="cat $FILES | awk -F ',' '($SET_DATE\$2 > \"$AFTER_DATE\" && \$2 < \"$BEFORE_DATE\") && \$4 != \"Z\" && \$4 !=\"M\" {print \$0}'"
+WRITE_MALE_GENDER="cat $FILES | awk -F ',' '($SET_DATE\$2 > \"$AFTER_DATE\" && \$2 < \"$BEFORE_DATE\") && \$4 ==\"M\" {print \$0}'"
+WRITE_FEMALE_GENDER="cat $FILES | awk -F ',' '($SET_DATE\$2 > \"$AFTER_DATE\" && \$2 < \"$BEFORE_DATE\") && \$4 == \"Z\" {print \$0}'"
+WRITE_105="cat $FILES | awk -F ',' '($SET_DATE\$2 > \"$AFTER_DATE\" && \$2 < \"$BEFORE_DATE\") && \$3 > 105 && \$4 ~ /$GENDER/ {print \$0}'| wc -l"
+
+WRITE_NONE_AGE="cat $FILES | awk -F ',' '($SET_DATE\$2 > \"$AFTER_DATE\" && \$2 < \"$BEFORE_DATE\") && \$3 ~/^$/ && \$4 ~ /$GENDER/ {print \$0}'| wc -l"
+WRITE_NONE_DATE="cat $FILES | awk -F ',' '!\$2 && \$4 ~ /$GENDER/ {print \$0}' |wc -l"
+WRITE_NONE_GENDER="cat $FILES | awk -F ',' '($SET_DATE\$2 > \"$AFTER_DATE\" && \$2 < \"$BEFORE_DATE\") && !\$4 {print \$0}' |wc -l"
+
+
+
+
+WRITE_YEARLY="-[0-9]{2}-[0-9]{2}$/ {print \$0}' | wc -l"
+WRITE_MONTHLY="-[0-9]{2}$/ {print \$0}' | wc -l"
+WRITE_DAILY="$/ {print \$0}' | wc -l"
+
+
+
+
+
+UNIQ_DAILY="cat $FILES | awk -F ',' '\$2 > \"$AFTER_DATE\" && \$2 < \"$BEFORE_DATE\" && \$4 ~ /$GENDER/ {print \$2}'| uniq | sort"
+UNIQ_MONTHLY="cat $FILES | awk -F ',' '\$2 > \"$AFTER_DATE\" && \$2 < \"$BEFORE_DATE\" && \$4 ~ /$GENDER/ {print \$2}' | cut -d "-" -f 1-2 | uniq | sort"
+UNIQ_YEARLY="cat $FILES | awk -F ',' '\$2 > \"$AFTER_DATE\" && \$2 < \"$BEFORE_DATE\" && \$4 ~ /$GENDER/ {print \$2}' | cut -d "-" -f 1 |uniq | sort"
+
+UNIQ_COUNTRIES="cat $FILES | awk -F ',' '($SET_DATE\$2 > \"$AFTER_DATE\" && \$2 < \"$BEFORE_DATE\") && \$4 ~ /$GENDER/ && \$8 && \$8 != \"CZ\" {print \$8}'| uniq | sort"
+UNIQ_DISTRICTS="cat $FILES | awk -F ',' '($SET_DATE\$2 > \"$AFTER_DATE\" && \$2 < \"$BEFORE_DATE\") && \$4 ~ /$GENDER/ && \$6 {print \$6}'| uniq | sort"
+UNIQ_REGIONS="cat $FILES | awk -F ',' '($SET_DATE\$2 > \"$AFTER_DATE\" && \$2 < \"$BEFORE_DATE\") && \$4 ~ /$GENDER/ && \$5 {print \$5}'| uniq | sort"
+
+
+
+
+
+
+
+
+print_nocommand(){
+
+	eval $WRITE_HEAD
+	eval $WRITE_WITH_GENDER
+
+}
+
+print_infected(){
+
+			INF=`eval $WRITE_WITH_GENDER" | wc -l"`
+			echo "$INF"
+}
+
+print_gender(){
+	INFN=`eval $WRITE_NONE_GENDER" |wc -l"`
+
+	if [ "$GENDER" = "(.*?)" ]
+		then
+			INFM=`eval $WRITE_MALE_GENDER" | wc -l"`
+			INFF=`eval $WRITE_FEMALE_GENDER" | wc -l"`
+
+			if [ $INFN != 0 ]
+				then
+					if [ $IS_SET_S = 1 ]
+					then
+						S_ARR=($INFM $INFF $INFN)
+						IFS=$'\n'
+						S_MAX=`echo "${S_ARR[*]}" | sort -nr | head -n1`
+						unset IFS
+						if [ $S_VALUE != 0 ]
+							then
+
+							S_GENDER=$(($S_MAX/$S_VALUE))
+						fi
+							INFF=$(($INFF/$S_GENDER))
+							INFM=$(($INFM/$S_GENDER))
+							INFN=$(($INFN/$S_GENDER))
+
+							printf  "M   : "
+							printf %$INFM"s" |tr " " "#"
+							echo ""
+  							printf  "F   : "
+                                                        printf %$INFF"s" |tr " " "#"
+                                                        echo ""
+							printf  "None: "
+                                                        printf %$INFN"s" |tr " " "#"
+                                                        echo ""
+
+					else
+					echo "M   : $INFM"
+					echo "Z   : $INFF"
+					echo "None: $INFN"
+
+					fi
+				else
+
+					if [ $IS_SET_S = 1 ]
+					then
+						S_ARR=($INFM $INFF)
+						IFS=$'\n'
+						S_MAX=`echo "${S_ARR[*]}" | sort -nr | head -n1`
+						unset IFS
+						if [ $S_VALUE != 0 ]
+							then
+
+							S_GENDER=$(($S_MAX/$S_VALUE))
+						fi
+							INFF=$(($INFF/$S_GENDER))
+							INFM=$(($INFM/$S_GENDER))
+
+
+							printf  "M: "
+							printf %$INFM"s" |tr " " "#"
+							echo ""
+  							printf  "Z: "
+                                                        printf %$INFF"s" |tr " " "#"
+                                                        echo ""
+
+					else
+					echo "M: $INFM"
+					echo "Z: $INFF"
+					fi
+			fi
+
+		else
+			if [ "$GENDER" = "^[M]$" ]
+				then
+					INFM=`eval $WRITE_WITH_GENDER" | wc -l"`
+
+				if [ $INFN != 0 ]
+					then
+						if [ $IS_SET_S = 1 ]
+							then
+							S_ARR=($INFM $INFN)
+							IFS=$'\n'
+							S_MAX=`echo "${S_ARR[*]}" | sort -nr | head -n1`
+							unset IFS
+							if [ $S_VALUE != 0 ]
+								then
+
+								S_GENDER=$(($S_MAX/$S_VALUE))
+							fi
+								INFN=$(($INFN/$S_GENDER))
+								INFM=$(($INFM/$S_GENDER))
+
+
+								printf "M   : "
+								printf %$INFM"s" |tr " " "#"
+								echo ""
+	                                                        echo "Z   : "
+								printf "None: "
+								printf %$INFN"s" |tr " " "#"
+								echo ""
+
+						else
+						echo "M   : $INFM"
+						echo "Z   : 0"
+						echo "None: $INFN"
+						fi
+					else
+						if [ $IS_SET_S = 1 ]
+							then
+							if [ $S_VALUE != 0 ]
+								then
+
+								S_GENDER=$(($S_MAX/$S_VALUE))
+							fi
+								INFM=$(($INFM/$S_GENDER))
+								printf "M: "
+								printf %$INFM"s" |tr " " "#"
+								echo ""
+								echo "Z: "
+						fi
+					fi
+				else
+					INFF=`eval $WRITE_WITH_GENDER" | wc -l"`
+
+
+				if [ $INFN != 0 ]
+					then
+						if [ $IS_SET_S = 1 ]
+							then
+							S_ARR=($INFF $INFN)
+							IFS=$'\n'
+							S_MAX=`echo "${S_ARR[*]}" | sort -nr | head -n1`
+							unset IFS
+							if [ $S_VALUE != 0 ]
+								then
+
+								S_GENDER=$(($S_MAX/$S_VALUE))
+							fi
+								INFN=$(($INFN/$S_GENDER))
+								INFF=$(($INFF/$S_GENDER))
+
+
+								echo "M   : "
+	                                                        printf "Z   : "
+								printf %$INFF"s" |tr " " "#"
+								echo ""
+								printf "None: "
+								printf %$INFN"s" |tr " " "#"
+								echo ""
+
+						else
+						echo "M   : 0"
+						echo "Z   : %INFF"
+						echo "None: $INFN"
+						fi
+					else
+						if [ $IS_SET_S = 1 ]
+							then
+							if [ $S_VALUE != 0 ]
+								then
+
+								S_GENDER=$(($S_MAX/$S_VALUE))
+							fi
+								INFF=$(($INFF/$S_GENDER))
+								echo "M: "
+								printf "Z: "
+								printf %$INFF"s" |tr " " "#"
+								echo ""
+				fi
+
+
+
+			fi
+	fi
+
+
+
+fi
+}
+
+
+print_age(){
+
+		ARR=()
+		X=0
+		Y=5
+		i=0
+		while [ $i -lt 12 ];
+		do
+
+		WRITE_XTOY="cat $FILES | awk -F ',' '($SET_DATE\$2 > \"$AFTER_DATE\" && \$2 < \"$BEFORE_DATE\") && \$3 >= $X && \$3 <= $Y && \$4 ~ /$GENDER/ {print \$0}'| wc -l"
+		if [ $X != 106 ]
+		then
+		ARR+=(`eval "$WRITE_XTOY"`)
+		else
+		ARR+=(`eval "$WRITE_105"`)
+
+		fi
+		if [ $IS_SET_S -eq 0 ]
+		then
+
+
+			if [ $X -eq 96 ]
+			then
+				printf "$X-$Y: "
+
+			else
+				if [ $X -eq 6 ]
+				then
+				printf "$X-$Y  : "
+				else
+				if [ $X -eq 0 ]
+				then
+				printf "$X-$Y   : "
+				else
+				if [ $X -eq 106 ]
+				then
+				printf ">105  : "
+				else
+				printf "$X-$Y : "
+				fi
+				fi
+				fi
+			fi
+			echo ${ARR[$i]}
+		fi
+		if [ $i -eq 0 ]
+			then
+			X=6
+			Y=15
+		else
+
+			X=$((X+=10))
+			Y=$((Y+=10))
+		fi
+		let i++
+		done
+
+		ARR+=(`eval $WRITE_NONE_AGE`)
+		if [ $IS_SET_S -eq 0 ]
+		then
+
+
+		if [ "${ARR[12]}" != 0 ]
+			then
+		echo "None  : ${ARR[12]}"
+		fi
+	fi
+
+
+	if [ $IS_SET_S -eq 1 ]
+	then
+	LEN=${#ARR[@]}
+	S_MAX=${ARR[0]}
+	i=0
+	X=0
+	Y=5
+		if [ $S_VALUE != 0 ]
+		then
+		while [ $i -lt $LEN ];
+		do
+			TEST_VAL=${ARR[$i]}
+
+			if [ $TEST_VAL -gt $S_MAX  ]
+				then
+				S_MAX=$TEST_VAL
+			fi
+			let i++
+		done
+
+		S_AGE=$(($S_MAX/$S_VALUE))
+		fi
+
+		i=0
+		LEN=$(($LEN-1))
+		while [ $i -lt $LEN ];
+			do
+			if [ $X -eq 96 ]
+			then
+				printf "$X-$Y: "
+
+			else
+				if [ $X -eq 6 ]
+				then
+				printf "$X-$Y  : "
+				else
+				if [ $X -eq 0 ]
+				then
+				printf "$X-$Y   : "
+				else
+				if [ $X -eq 106 ]
+				then
+				printf ">105  : "
+				else
+				printf "$X-$Y : "
+				fi
+				fi
+				fi
+			fi
+			OUT="${ARR[$i]}"
+			OUT=$(($OUT/$S_AGE))
+
+			printf %$OUT"s" |tr " " "#"
+			echo ""
+			if [ $i -eq 0 ]
+			then
+			X=6
+			Y=15
+		else
+
+			X=$((X+=10))
+			Y=$((Y+=10))
+		fi
+			let i++
+			done
+		if [ $IS_SET_S -eq 1 ]
+		then
+
+
+		if [ "${ARR[12]}" != 0 ]
+			then
+		echo "None  : "
+			OUT="${ARR[12]}"
+			OUT=$(($OUT/$S_AGE))
+
+			printf %$OUT"s" |tr " " "#"
+			fi
+		fi
+	fi
+}
+
+print_date(){
+
+	ARR=`eval "$UNIQ_DATE"`
+	ARR=($ARR)
+	LEN=${#ARR[@]}
+	i=0
+	PREFIX="cat $FILES | awk -F ',' '\$4 ~ /$GENDER/ && \$2 > \"$AFTER_DATE\" && \$2 < \"$BEFORE_DATE\" && \$2 ~ /^"
+
+	if [ $IS_SET_S -eq 0 ]
+	then
+		while [ $i -lt $LEN ];
+		do
+			printf "${ARR[$i]}: "
+			eval "$PREFIX${ARR[$i]}$WRITE_DATE"
+			let i++
+		done
+
+		NONE_DATE=`eval $WRITE_NONE_DATE`
+
+		if [ $NONE_DATE != 0 ]
+			then
+				echo "$NONE_PRINT$NONE_DATE"
+		fi
+	else
+		NONE_DATE=`eval $WRITE_NONE_DATE`
+		S_MAX=$NONE_DATE
+		i=0
+		if [ $S_VALUE != 0 ]
+			then
+			while [ $i -lt $LEN ];
+			do
+				TEST_VAL=`eval "$PREFIX${ARR[$i]}$WRITE_DATE"`
+
+				if [ $TEST_VAL -gt $S_MAX  ]
+					then
+					S_MAX=$TEST_VAL
+				fi
+				let i++
+			done
+
+			S_DATE=$(($S_MAX/$S_VALUE))
+		fi
+		i=0
+		while [ $i -lt $LEN ];
+			do
+			printf "${ARR[$i]}: "
+			OUT=`eval "$PREFIX${ARR[$i]}$WRITE_DATE"`
+			OUT=$(($OUT/$S_DATE))
+
+			printf %$OUT"s" |tr " " "#"
+			echo ""
+			let i++
+			done
+
+		if [ $NONE_DATE != 0 ]
+			then
+
+				NONE_DATE=$(($NONE_DATE/$S_DAILY))
+
+				echo -n "$NONE_PRINT"
+				printf %$NONE_DATE"s" |tr " " "#"
+				echo ""
+		fi
+
+
+
+	fi
+}
+
+print_zone(){
+
+	ARR=`eval "$UNIQ_ZONE"`
+	ARR="$( echo $ARR | tr ' ' '\n' | sort | uniq )"
+	ARR=($ARR)
+	LEN=${#ARR[@]}
+	PREFIX="cat $FILES | awk -F ',' '($SET_DATE\$2 > \"$AFTER_DATE\" && \$2 < \"$BEFORE_DATE\") && "
+	SUFIX=" && \$4 ~ /$GENDER/ {print \$0}' | wc -l"
+	NONE_ZONE="$PREFIX\$4 ~ /$GENDER/ && !$ZONE {print \$0}'| wc -l"
+	NONE_ZONE=`eval $NONE_ZONE`
+	i=0
+	if [ $IS_SET_S -eq 0 ]
+		then
+		while [ $i -lt $LEN ];
+		do
+			printf "${ARR[$i]}: "
+			eval "$PREFIX$ZONE == \"${ARR[$i]}\"$SUFIX"
+			let i++
+		done
+
+
+		if [[ $NONE_ZONE != 0 && $COMMAND != "countries" ]]
+			then
+			printf "$NONE_PRINT"
+			printf "$NONE_ZONE"
+			echo ""
+		fi
+	else
+		if [ $COMMAND != "countries" ]
+		then
+		S_MAX=$NONE_ZONE
+		else
+		S_MAX=`eval "$PREFIX$ZONE == \"${ARR[0]}\"$SUFIX"`
+		fi
+		
+		while [ $i -lt $LEN ];
+		do
+			TEST_VAL=`eval "$PREFIX$ZONE == \"${ARR[$i]}\"$SUFIX"`
+
+			if [ $TEST_VAL -gt $S_MAX ]
+				then
+				S_MAX=$TEST_VAL
+			fi
+			let i++
+		done
+
+		i=0
+		if [ $S_VALUE != 0 ]
+			then
+				S_ZONE=$(($S_MAX/$S_VALUE))
+
+		fi
+
+		while [ $i -lt $LEN ];
+			do
+			printf "${ARR[$i]}: "
+			OUT=`eval "$PREFIX$ZONE == \"${ARR[$i]}\"$SUFIX"`
+			OUT=$(($OUT/$S_ZONE))
+
+			printf %$OUT"s" |tr " " "#"
+			echo ""
+			let i++
+		done
+
+		if [[ $NONE_ZONE != 0 && $COMMAND != "countries" ]]
+			then
+
+				NONE_ZONE=$(($NONE_ZONE/$S_ZONE))
+				echo -n "$NONE_PRINT"
+				printf %$NONE_ZONE"s" |tr " " "#"
+				echo ""
+		fi
+
+
+
+	fi
+
+
+
+}
+
+
+
+
+
+case $COMMAND in
+
+  infected)
+	print_infected
+    ;;
+  merge)
+	print_nocommand
+  ;;
+  gender)
+	print_gender
+  ;;
+  age)
+	print_age
+  ;;
+  daily)
+	UNIQ_DATE=$UNIQ_DAILY
+	WRITE_DATE=$WRITE_DAILY
+	S_DATE=$S_DAILY
+	NONE_PRINT="None      : "
+	print_date
+  ;;
+  monthly)
+	UNIQ_DATE=$UNIQ_MONTHLY
+	WRITE_DATE=$WRITE_MONTHLY
+	S_DATE=$S_MONTHLY
+	NONE_PRINT="None   : "
+	print_date
+  ;;
+  yearly)
+	UNIQ_DATE=$UNIQ_YEARLY
+	WRITE_DATE=$WRITE_YEARLY
+	S_DATE=$S_YEARLY
+	NONE_PRINT="None: "
+	print_date
+  ;;
+  countries)
+	UNIQ_ZONE=$UNIQ_COUNTRIES
+	S_ZONE=$S_COUNTRIES
+	ZONE="\$8"
+	print_zone
+ ;;
+  districts)
+	UNIQ_ZONE=$UNIQ_DISTRICTS
+	S_ZONE=$S_DISTRICTS
+	ZONE="\$6"
+	NONE_PRINT="None  : "
+	print_zone
+  ;;
+  regions)
+	UNIQ_ZONE=$UNIQ_REGIONS
+	S_ZONE=$S_REGIONS
+	ZONE="\$5"
+	NONE_PRINT="None : "
+	print_zone
+  ;;
+  *)
+	print_nocommand
+  ;;
+
+esac
+
+
+
+
